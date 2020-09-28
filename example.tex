@@ -1,0 +1,31 @@
+\documentclass{ctexart}
+\usepackage{review}
+\setclass{math, en*}
+\rvsetup{
+  math/group-prop={x, y}
+}
+\rvsetupsub{math, en}{
+  group-prop={a,b}, item-prop={c,d},
+  group-prop={e,f}
+}
+
+\begin{document}
+\typeout{xxx}
+\ExplSyntaxOn
+\seq_use:Nn \g__rv_math_group_prop_seq {*}
+\seq_use:Nn \g__rv_math_item_prop_seq {*}
+\rvPropIfGroupedT{math}{e}{yes}
+\rvPropIfGroupedTF{math}{c}{yes}{no}
+\NewrvGroupEnvironment { math } { m +b }
+  { #1 } { }
+\NewrvGroupEnvironment { en=en } { m +b }
+  { #1 #2 } { }
+\ExplSyntaxOff
+\begin{rvmath}{+++}
+\end{rvmath}
+\begin{en}{+++}
+  dkf
+\end{en}
+
+abc
+\end{document}

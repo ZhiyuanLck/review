@@ -1,0 +1,418 @@
+\RequirePackage{expl3, rv-utils}
+\ProvidesExplPackage
+  {review}
+  {2020/09/26}
+  {v1.0}
+  {review something}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% review class init
+
+\clist_new:N \g__rv_review_point_clist
+
+\NewDocumentCommand { \setclass } { m }
+  {
+    \__rv_msg_multi_class_options:
+    \__rv_set_class:n { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_set_class:n
+  {
+    \seq_gclear_new:N \g__rv_class_seq
+    \clist_map_inline:nn { #1 }
+      {
+        \str_if_in:nnTF { ##1 } { * }
+          { \__rv_set_single_class:w ##1 }
+          { \__rv_set_single_class:n { ##1 } }
+      }
+  }
+
+\cs_new_protected:Npn \__rv_set_single_class:w #1*
+  {
+    \__rv_set_single_class:n { #1 }
+    \bool_gset_true:c { g__rv_#1_if_grouped_bool }
+  }
+
+\cs_new_protected:Nn \__rv_set_single_class:n
+  {
+    \tl_clear_new:N \l__rv_class_tl
+    \int_gzero_new:c { g__rv_#1_groupid_int }
+    \bool_new:c { g__rv_#1_if_grouped_bool }
+
+    \tl_set:Nn \l__rv_class_tl { #1 }
+    \bool_gset_false:c { g__rv_#1_if_grouped_bool }
+    \seq_gput_right:Nn \g__rv_class_seq { #1 }
+
+    % prop name sequence
+    \seq_gclear_new:c { g__rv_#1_group_prop_seq }
+    \seq_gclear_new:c { g__rv_#1_item_prop_seq }
+
+    % save seq name
+    \seq_gclear_new:c { g__rv_#1_gsave_seq }
+    \seq_gput_right:cn { g__rv_#1_gsave_seq } { group }
+    \seq_gclear_new:c { g__rv_#1_save_seq }
+    \seq_gput_right:cn { g__rv_#1_save_seq } { item }
+
+    \__rv_set_single_class_kv:n { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_set_single_class_kv:n
+  {
+    \keys_define:nn { review / #1 }
+      {
+        group-prop .code:n = { \__rv_set_group_prop:nn { #1 } { ##1 } },
+        item-prop .code:n = { \__rv_set_item_prop:nn { #1 } { ##1 } },
+        save .code:n =
+          { \rv_seq_gappend_clist:cn { g__rv_#1_save_seq } { ##1 } },
+        gsave .code:n =
+          { \rv_seq_gappend_clist:cn { g__rv_#1_gsave_seq } { ##1 } },
+      }
+  }
+
+% #1 class #2 props
+\cs_new_protected:Nn \__rv_set_group_prop:nn
+  {
+    \bool_if:cTF { g__rv_#1_if_grouped_bool }
+      {
+        \rv_seq_gappend_clist:cn { g__rv_#1_group_prop_seq } { #2 }
+        \clist_map_inline:nn { #2 }
+          { \__rv_set_single_prop:nnN { #1 } { ##1 } \c_true_bool }
+      }
+      {
+        \__rv_set_item_prop:nn { #1 } { #2 }
+        \__rv_msg_warning:nn { group-prop-warning } { #1 }
+      }
+  }
+
+% #1 class #2 props
+\cs_new_protected:Nn \__rv_set_item_prop:nn
+  {
+    \rv_seq_gappend_clist:cn { g__rv_#1_item_prop_seq } { #2 }
+    \clist_map_inline:nn { #2 }
+      { \__rv_set_single_prop:nnN { #1 } { ##1 } \c_false_bool }
+  }
+
+% #1 class #2 prop #3 true/false
+\cs_new_protected:Nn \__rv_set_single_prop:nnN
+  {
+    \bool_if_exist:cTF { g__rv_#1_prop_#2_if_grouped_bool }
+      { \__rv_msg_error:nnn { duplicated-prop } { #1 } { #2 } }
+      {
+        \bool_new:c { g__rv_#1_prop_#2_if_grouped_bool }
+        \bool_gset_eq:cN { g__rv_#1_prop_#2_if_grouped_bool } #3
+
+        \bool_if:NT #3 { \seq_new:c { g__rv_#1_group_#2_seq } }
+      }
+  }
+
+\keys_define:nn { review }
+  {
+    review-point .clist_gset:N = \g__rv_review_point_clist,
+  }
+
+\keys_set:nn { review }
+  {
+    review-point = { 2, 4, 7, 15, 30, 60 },
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% option setting command
+
+\NewDocumentCommand { \rvsetup } { m }
+  {
+    \__rv_msg_class_not_set:n { rvsetup }
+    \keys_set:nn { review } { #1 }
+  }
+
+% #1 class list #2 common keys set
+\NewDocumentCommand { \rvsetupsub } { m m }
+  {
+    \__rv_msg_class_not_set:n { rvsetupsub }
+    \clist_map_inline:nn { #1 }
+      { \__rv_setup_sub:nn { ##1 } { #2 } }
+  }
+
+% #1 class #2 key-val
+\cs_new_protected:Nn \__rv_setup_sub:nn
+  {
+    \__rv_msg_class_not_define:nn { #1 } { critical }
+    \keys_set:nn { review / #1 } { #2 }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Conditionals
+
+\prg_new_conditional:Npnn \__rv_class_if_grouped:n #1 { T, F, TF }
+  {
+    \__rv_msg_class_not_define:nn { #1 } { error }
+    \bool_if:cTF { g__rv_#1_if_grouped_bool }
+      { \prg_return_true: }
+      { \prg_return_false: }
+  }
+
+% #1 class
+\prg_new_conditional:Nnn \__rv_class_if_exist:n { T, F, TF }
+  {
+    \seq_if_in:NnTF \g__rv_class_seq { #1 }
+      { \prg_return_true: }
+      { \prg_return_false: }
+  }
+
+% #1 class #2 prop
+\prg_new_conditional:Nnn \__rv_prop_if_grouped:nn { T, F, TF}
+  {
+    \__rv_msg_class_not_define:nn { #1 } { error }
+    \__rv_msg_prop_not_define:nn { #1 } { #2 }
+    \bool_if:cTF { g__rv_#1_prop_#2_if_grouped_bool }
+      { \prg_return_true: }
+      { \prg_return_false: }
+  }
+
+% #1 class
+\cs_new:Npn \rvClassIfGroupedTF #1 #2 #3
+  {
+    \__rv_class_if_grouped:nTF { #1 } { #2 } { #3 }
+  }
+
+\cs_new:Npn \rvClassIfGroupedT #1 #2
+  {
+    \__rv_class_if_grouped:nT { #1 } { #2 }
+  }
+
+\cs_new:Npn \rvClassIfGroupedF #1 #2
+  {
+    \__rv_class_if_grouped:nF { #1 } { #2 }
+  }
+
+% #1 class #2 prop
+\cs_new:Npn \rvPropIfGroupedTF #1 #2 #3 #4
+  {
+    \__rv_prop_if_grouped:nnTF { #1 } { #2 } { #3 } { #4 }
+  }
+
+\cs_new:Npn \rvPropIfGroupedT #1 #2 #3
+  {
+    \__rv_prop_if_grouped:nnT { #1 } { #2 } { #3 }
+  }
+
+\cs_new:Npn \rvPropIfGroupedF #1 #2 #3
+  {
+    \__rv_prop_if_grouped:nnF { #1 } { #2 } { #3 }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Env set
+
+% #1 class #2 prop #3 content
+\cs_new_protected:Nn \__rv_save_prop:nnn
+  {
+    \__rv_msg_class_not_define:nn { #1 } { error }
+    \__rv_msg_prop_not_define:nn { #1 } { #2 }
+  }
+
+\cs_new_protected:Nn \__rv_save_group_prop:nnn
+  {
+  }
+
+% #1 classes
+\cs_new_protected:Nn \__rv_new_group_env:nnnn
+  {
+    \str_if_in:nnTF { #1 } { = }
+      { \rv_utils_get_kv:nNN { #1 } }
+      { \rv_utils_get_kv:nNN { #1=rv#1 } }
+    \l_tmpa_tl \l_tmpb_tl
+    \exp_args:NV \__rv_env_init_gsave:n \l_tmpa_tl
+    \__rv_msg_class_not_define:Vn \l_tmpa_tl { critical }
+    \NewDocumentEnvironment { \l_tmpb_tl } { #2 }
+      {
+        \__rv_env_init:V \l_tmpa_tl
+        #3
+      } { #4 }
+  }
+
+\cs_set_eq:NN \NewrvGroupEnvironment \__rv_new_group_env:nnnn
+
+\cs_new_protected:Nn \__rv_env_init_gsave:n
+  {
+    \seq_map_inline:cn { g__rv_#1_gsave_seq }
+      {
+        \seq_map_inline:cn { g__rv_#1_group_prop_seq }
+          {
+            \seq_gclear_new:c { g__rv_#1_gsave_##1_prop_####1_seq }
+          }
+        \seq_map_inline:cn { g__rv_#1_item_prop_seq }
+          {
+            \seq_gclear_new:c { g__rv_#1_gsave_##1_prop_####1_seq }
+          }
+      }
+  }
+
+\cs_new_protected:Nn \__rv_env_init:n
+  {
+    \tl_clear_new:N \l__rv_class_tl
+    \tl_set:Nn \l__rv_class_tl { #1 }
+    \int_gincr:c { g__rv_#1_groupid_int }
+
+    \__rv_env_init_save:n { #1 }
+    \__rv_env_init_prg:n { #1 }
+  }
+\cs_generate_variant:Nn \__rv_env_init:n { V }
+
+\cs_new_protected:Nn \__rv_env_init_save:n
+  {
+    % \seq_map_inline:cn { g__rv_#1_save_seq }
+      % {
+        % \seq_map_inline:cn { g__rv_#1_group_prop_seq }
+          % {
+            % \seq_gclear_new:c { g__rv_#1_gsave_##1_prop_####1_seq }
+          % }
+        % \seq_map_inline:cn { g__rv_#1_item_prop_seq }
+          % {
+            % \seq_gclear_new:c { g__rv_#1_gsave_##1_prop_####1_seq }
+          % }
+      % }
+  }
+
+\cs_new_protected:Nn \__rv_env_init_prg:n
+  {
+    % Class group if
+    \cs_set:Npn \rvClassIfGroupedTF ##1 ##2
+      {
+        \__rv_class_if_grouped:nTF { #1 } { ##1 } { ##2 }
+      }
+
+    \cs_set:Npn \rvClassIfGroupedT ##1
+      {
+        \__rv_class_if_grouped:nT { #1 } { ##1 }
+      }
+
+    \cs_set:Npn \rvClassIfGroupedF ##1
+      {
+        \__rv_class_if_grouped:nF { #1 } { ##1 }
+      }
+
+    % Prop group if
+
+    \cs_set:Npn \rvPropIfGroupedTF ##1 ##2 ##3
+      {
+        \__rv_prop_if_grouped:nnTF { #1 } { ##1 } { ##2 } { ##3 }
+      }
+
+    \cs_set:Npn \rvPropIfGroupedT ##1 ##2
+      {
+        \__rv_prop_if_grouped:nnT { #1 } { ##1 } { ##2 }
+      }
+
+    \cs_set:Npn \rvPropIfGroupedF ##1 ##2
+      {
+        \__rv_prop_if_grouped:nnF { #1 } { ##1 } { ##2 }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% package msg
+
+\cs_new_protected:Nn \__rv_msg_new:nn
+  {
+    \msg_new:nnn { review } { #1 } { #2 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_warning:nn
+  {
+    \msg_warning:nnn { review } { #1 } { #2 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_error:n
+  {
+    \msg_error:nn { review } { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_error:nn
+  {
+    \msg_error:nnn { review } { #1 } { #2 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_error:nnn
+  {
+    \msg_error:nnnn { review } { #1 } { #2 } { #3 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_critical:n
+  {
+    \msg_critical:nn { review } { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_msg_critical:nn
+  {
+    \msg_critical:nnn { review } { #1 } { #2 }
+  }
+
+\__rv_msg_new:nn { class-not-set }
+  {
+    Review~ classes~ is~ not~ set~ or~ empty.~ Please~ set~ classes~ by~
+    command~ '\c_backslash_str setclass'~ before~ '\c_backslash_str#1'.
+  }
+
+\__rv_msg_new:nn { class-not-define }
+  {
+    Review~ class~ '#1'~ not~ defined!
+  }
+
+\__rv_msg_new:nn { multi-class-options }
+  {
+    Please~ do~ not~ set~ review~ classes~ multiple~ times!~ Check~ if~
+    there~ are~ duplicated~ '\c_backslash_str setclass'~ commands.
+  }
+
+\__rv_msg_new:nn { group-prop-warning }
+  {
+    You~ are~ setting~ group~ properties~ for~ ungrouped~ review~ class~
+    '#1'.~ They~ will~ be~ set~ as~ item~ properties.
+  }
+
+\__rv_msg_new:nn { duplicated-prop }
+  {
+    Property~ '#2'~ of~ review~ class~ '#1'~ has~ been~ defined.
+  }
+
+\__rv_msg_new:nn { prop-not-define }
+  {
+    Property~ '#2'~ of~ review~ class~ '#1'~ is~ not~ defined.
+  }
+
+\cs_new_protected:Nn \__rv_msg_class_not_set:n
+  {
+    \bool_if:nT
+      {
+        ! \seq_if_exist_p:N \g__rv_class_seq ||
+        \seq_if_empty_p:N \g__rv_class_seq
+      }
+      { \__rv_msg_critical:nn { class-not-set } { #1 } }
+  }
+
+% #1 class #2 msg type
+\cs_new_protected:Nn \__rv_msg_class_not_define:nn
+  {
+    % \__rv_class_if_exist:nF { #1 }
+    \seq_if_in:NnF \g__rv_class_seq { #1 }
+      {
+        \cs_if_exist_use:c { __rv_msg_#2:nn }
+          { class-not-define }
+          { #1 }
+      }
+  }
+\cs_generate_variant:Nn \__rv_msg_class_not_define:nn { Vn }
+
+\cs_new_protected:Nn \__rv_msg_multi_class_options:
+  {
+    \seq_if_exist:NT \g__rv_class_seq
+      { \__rv_msg_error:n { multi-class-options } }
+  }
+
+\cs_new_protected:Nn \__rv_msg_prop_not_define:nn
+  {
+    \bool_if_exist:cF { g__rv_#1_prop_#2_if_grouped_bool }
+      { \__rv_msg_error:nnn { prop-not-define } { #1 } { #2 } }
+  }
+
+\file_input_stop:
