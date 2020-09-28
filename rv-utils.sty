@@ -97,6 +97,20 @@
   }
 \cs_generate_variant:Nn \rv_seq_gappend_clist:Nn { cn }
 
+\cs_new_protected:Nn \rv_seq_append_clist_remove_duplicates:Nn
+  {
+    \rv_seq_append_clist:Nn #1 { #2 }
+    \seq_remove_duplicates:N #1
+  }
+\cs_generate_variant:Nn \rv_seq_append_clist_remove_duplicates:Nn { cn }
+
+\cs_new_protected:Nn \rv_seq_gappend_clist_remove_duplicates:Nn
+  {
+    \rv_seq_gappend_clist:Nn #1 { #2 }
+    \seq_gremove_duplicates:N #1
+  }
+\cs_generate_variant:Nn \rv_seq_gappend_clist_remove_duplicates:Nn { cn }
+
 % get subkey from the keypath
 % #1 index
 % \cs_new_protected:Nn \rv_utils_subkey:n

@@ -1,29 +1,34 @@
 \documentclass{ctexart}
 \usepackage{review}
-\setclass{math, en*}
+\rvsetclass{math, en}
+\ExplSyntaxOn
+% \__rv_show:
+\ExplSyntaxOff
 \rvsetup{
-  math/group-prop={x, y}
 }
-\rvsetupsub{math, en}{
-  group-prop={a,b}, item-prop={c,d},
-  group-prop={e,f}
+\rvsetupall{
+  show={a,bc},
+  prop={a,b,c,d},
+  local-group={test},
+  global-group={abc}
 }
 
 \begin{document}
 \typeout{xxx}
 \ExplSyntaxOn
-\seq_use:Nn \g__rv_math_group_prop_seq {*}
-\seq_use:Nn \g__rv_math_item_prop_seq {*}
-\rvPropIfGroupedT{math}{e}{yes}
-\rvPropIfGroupedTF{math}{c}{yes}{no}
-\NewrvGroupEnvironment { math } { m +b }
-  { #1 } { }
-\NewrvGroupEnvironment { en=en } { m +b }
+% \seq_use:Nn \g__rv_math_group_prop_seq {*}
+% \seq_use:Nn \g__rv_math_item_prop_seq {*}
+\NewrvGroupEnvironment { math,en=en } { m +b }
   { #1 #2 } { }
+\DeclarervGroupEnvironment { math,en=en } { m +b }
+  { #1*#2 } { }
+% \NewrvGroupEnvironment { en=en } { m +b }
 \ExplSyntaxOff
 \begin{rvmath}{+++}
+  \rvgroup*[abcd]{a}{test}
 \end{rvmath}
 \begin{en}{+++}
+  \rvgroup[test]{a}{test}
   dkf
 \end{en}
 
