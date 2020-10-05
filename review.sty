@@ -1,7 +1,8 @@
+% 4. review point
 \RequirePackage{expl3, rv-utils}
 \ProvidesExplPackage
   {review}
-  {2020/09/26}
+  {2020/10/05}
   {v1.0}
   {review something}
 
@@ -11,7 +12,13 @@
 \seq_new:N \g__rv_class_seq
 \seq_new:N \g__rv_show_class_seq
 \seq_new:N \g__rv_show_group_seq
-\clist_new:N \g__rv_review_point_clist
+\bool_new:N \l__rv_if_append_subgroup_bool
+\bool_new:N \l__rv_if_subgroup_appended_bool
+
+\seq_const_from_clist:Nn \g__rv_reserved_counter_seq
+  { rvenv, rvgroup, rvitem }
+\prop_gset_from_keyval:Nn \g__rv_reserved_counter_prop
+  { rvenv=, rvgroup=, rvitem= }
 
 \NewDocumentCommand { \rvsetclass } { m }
   {
@@ -20,29 +27,29 @@
 
 \cs_new_protected:Nn \__rv_set_class:n
   {
-    \rv_seq_gappend_clist_remove_duplicates:Nn \g__rv_class_seq { #1 }
+    \seq_set_from_clist:Nn \g__rv_class_seq { #1 }
     \clist_map_inline:nn { #1 }
       { \__rv_set_single_class:n { ##1 } }
   }
 
 \cs_new_protected:Nn \__rv_set_single_class:n
   {
-    \tl_clear_new:N \l__rv_class_tl
-    \int_gzero_new:c { g__rv_#1_groupid_int }
-
-    \tl_set:Nn \l__rv_class_tl { #1 }
-    \seq_gput_right:Nn \g__rv_class_seq { #1 }
-
-    % prop name sequence
-    \seq_gclear_new:c { g__rv_#1_prop_seq }
-
-    % group seq name
-    \seq_gclear_new:c { g__rv_#1_global_group_seq }
-    \seq_gput_right:cn { g__rv_#1_global_group_seq } { star }
-    \seq_gclear_new:c { g__rv_#1_local_group_seq }
-    \seq_gput_right:cn { g__rv_#1_local_group_seq } { group }
-
+    \__rv_init_single_class:n { #1 }
     \__rv_set_single_class_kv:n { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_init_single_class:n
+  {
+    % init group seq
+    \seq_gset_from_clist:cn { g__rv_#1_global_group_seq } { star, date, all }
+    \seq_gset_from_clist:cn { g__rv_#1_local_group_seq } { date, all }
+    % init counter seq
+    \seq_gclear_new:c { g__rv_#1_global_counter_seq }
+    \seq_gclear_new:c { g__rv_#1_local_counter_seq }
+    \prop_gclear_new:c { g__rv_#1_global_counter_prop }
+    \prop_gclear_new:c { g__rv_#1_local_counter_prop }
+    % init prop seq
+    \seq_gclear_new:c { g__rv_#1_prop_seq }
   }
 
 \cs_new_protected:Nn \__rv_set_single_class_kv:n
@@ -51,23 +58,53 @@
       {
         prop .code:n =
           {
-            \rv_seq_gappend_clist_remove_duplicates:cn
+            \rv_seq_gappend_clist:cn
               { g__rv_#1_prop_seq } { ##1 }
           },
+        % items are appended to a local subgroup and then the local subgroup
+        % is appended to the local group
         local-group .code:n =
           {
-            \rv_seq_gappend_clist_remove_duplicates:cn
+            \rv_seq_gappend_clist:cn
               { g__rv_#1_local_group_seq } { ##1 }
           },
+        % items are appended to global groups directly
         global-group .code:n =
           {
-            \rv_seq_gappend_clist_remove_duplicates:cn
+            \rv_seq_gappend_clist:cn
               { g__rv_#1_global_group_seq } { ##1 }
           },
-        show .code:n =
+        group .code:n =
           {
-            \seq_gset_from_clist:cn { g__rv_#1_show_group_seq } { ##1 }
-          }
+            \rv_seq_gappend_clist:cn
+              { g__rv_#1_global_group_seq } { ##1 }
+            \rv_seq_gappend_clist:cn
+              { g__rv_#1_local_group_seq } { ##1 }
+          },
+        % local counter is local to subgroup
+        local-counter .code:n =
+          {
+            \__rv_counter_seq_append:nnn { #1 } { local } { ##1 }
+          },
+        global-counter .code:n =
+          {
+            \__rv_counter_seq_append:nnn { #1 } { global } { ##1 }
+          },
+        counter .code:n =
+          {
+            \__rv_counter_seq_append:nnn { #1 } { local } { ##1 }
+            \__rv_counter_seq_append:nnn { #1 } { global } { ##1 }
+          },
+      }
+  }
+
+% #1 class #2 global/local #3 counter name list
+\cs_new_protected:Nn \__rv_counter_seq_append:nnn
+  {
+    \clist_map_inline:nn { #3 }
+      {
+        \seq_gput_right:cn { g__rv_#1_#2_counter_seq } { ##1 }
+        \prop_gput:cnn { g__rv_#1_#2_counter_prop } { ##1 } { }
       }
   }
 
@@ -116,27 +153,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Env set
 
-% #1 class #2 ggroup name #3 prop #4 content
-\cs_new_protected:Nn \__rv_save_global_group_prop:nnnn
-  {
-    \__rv_check_group_not_define:nnn { #1 } { #2 } { global }
-    \__rv_check_prop_not_define:nn { #1 } { #3 }
-    \seq_gput_right:cn { g__rv_#1_global_group_#2_prop_#3_seq } { #4 }
-  }
-
-% #1 class #2 ggroup name #3 prop #4 content
-\cs_new_protected:Nn \__rv_save_local_group_prop:nnnn
-  {
-    \__rv_check_group_not_define:nnn { #1 } { #2 } { local }
-    \__rv_check_prop_not_define:nn { #1 } { #3 }
-    \seq_gput_right:cn
-      {
-        g__rv_#1_local_group_#2_prop_#3_
-        \int_use:c { g__rv_#1_groupid_int }
-        _seq
-      } { #4 }
-  }
-
 \clist_map_inline:nn { New, Renew, Declare, Provide }
   {
     \cs_new_protected:cpn { #1rvGroupEnvironment } ##1##2##3##4
@@ -145,7 +161,8 @@
       }
   }
 
-% #1 new/declare/renew/provide #2 classes
+% #1 new/declare/renew/provide #2 classes and envs
+% #3 signatures #4 before code #5 after code
 \cs_new_protected:Nn \__rv_new_group_env:nnnnn
   {
     \__rv_check_class_not_set:
@@ -159,19 +176,90 @@
       }
   }
 
+% #1 new/declare/renew/provide #2 class=env name
+% #3 signatures #4 before code #5 after code
 \cs_new_protected:Nn \__rv_new_single_group_env:nnnnn
   {
     \str_if_in:nnTF { #2 } { = }
       { \rv_utils_get_kv:nNN { #2 } }
       { \rv_utils_get_kv:nNN { #2=rv#2 } }
-    \l_tmpa_tl \l_tmpb_tl
-    \exp_args:NV \__rv_env_init_global_group:n \l_tmpa_tl
-    \exp_args:NV \__rv_check_class_not_define:nn \l_tmpa_tl { critical }
-    \__rv_set_single_group_env:nVVnnn { #1 } \l_tmpa_tl \l_tmpb_tl
+    \l__rv_class_tl \l__rv_env_tl
+    \__rv_before_env_init:V \l__rv_class_tl
+    \__rv_set_single_group_env:nVVnnn { #1 } \l__rv_class_tl \l__rv_env_tl
       { #3 } { #4 } { #5 }
   }
 \cs_generate_variant:Nn \__rv_new_single_group_env:nnnnn { nnnVV }
 
+% init global group/counter and other things
+% #1 class
+\cs_new_protected:Nn \__rv_before_env_init:n
+  {
+    \__rv_check_class_not_define:nn { #1 } { critical }
+    \__rv_init_global_group:n { #1 }
+    \__rv_add_default_counter:n { #1 }
+    % init global counters inside env
+    \__rv_init_counter:nnn { #1 } { env } { global }
+    % env counter
+    \int_gzero_new:c { g__rv_#1_reserved_counter_rvenv_int }
+    % subgroup index seq (local group)
+    \__rv_init_index_seq:n { #1 }
+  }
+\cs_generate_variant:Nn \__rv_before_env_init:n { V }
+
+% #1 class
+\cs_new_protected:Nn \__rv_init_index_seq:n
+  {
+    \seq_map_inline:cn { g__rv_#1_local_group_seq }
+      {
+        \seq_gclear_new:c { g__rv_#1_subgroup_##1_index_seq }
+      }
+  }
+
+% #1 class
+\cs_new_protected:Nn \__rv_init_global_group:n
+  {
+    \seq_map_inline:cn { g__rv_#1_global_group_seq }
+      {
+        \seq_map_inline:cn { g__rv_#1_prop_seq }
+          {
+            \seq_gclear_new:c { g__rv_#1_global_group_##1_prop_####1_seq }
+          }
+      }
+  }
+
+% add default counters:
+% every global group has a global counter to count items
+% every local group has a global counter to count subgroups and a local
+  % counter to count items
+% #1 class
+\cs_new_protected:Nn \__rv_add_default_counter:n
+  {
+    \__rv_set_group_default_counter:nnn { #1 } { global } { global }
+    \__rv_set_group_default_counter:nnn { #1 } { global } { local }
+    \__rv_set_group_default_counter:nnn { #1 } { local } { local }
+  }
+
+% #1 class #2 global/local #3 group name to be appended
+\cs_new_protected:Nn \__rv_set_group_default_counter:nnn
+  {
+    \seq_map_inline:cn { g__rv_#1_#3_group_seq }
+      {
+        \seq_gput_left:cn { g__rv_#1_#2_counter_seq } { ##1 }
+        \prop_gput:cnn { g__rv_#1_#2_counter_prop } { ##1 } { }
+      }
+  }
+
+% #1 class #2 env/show #3 global/local
+\cs_new_protected:Nn \__rv_init_counter:nnn
+  {
+    \seq_map_inline:cn { g__rv_#1_#3_counter_seq }
+      {
+        \__rv_check_reserved_counter:n { ##1 }
+        \int_gzero_new:c { g__rv_#1_#2_#3_counter_##1_int }
+      }
+  }
+
+% #1 New/Renew... #2 class #3 env name ...
 \cs_new_protected:Nn \__rv_set_single_group_env:nnnnnn
   {
     \cs_if_exist_use:c { #1DocumentEnvironment } { #3 } { #4 }
@@ -182,38 +270,26 @@
   }
 \cs_generate_variant:Nn \__rv_set_single_group_env:nnnnnn { nVVnnn }
 
-\cs_new_protected:Nn \__rv_env_init_global_group:n
-  {
-    \seq_map_inline:cn { g__rv_#1_prop_seq }
-      {
-        \seq_map_inline:cn { g__rv_#1_global_group_seq }
-          {
-            \seq_gclear_new:c { g__rv_#1_global_group_####1_prop_##1_seq }
-          }
-      }
-  }
-
 \cs_new_protected:Nn \__rv_env_init:n
   {
-    \tl_clear_new:N \l__rv_class_tl
-    \tl_set:Nn \l__rv_class_tl { #1 }
-    \int_gincr:c { g__rv_#1_groupid_int }
-
+    % step counter first
+    \int_gincr:c { g__rv_#1_reserved_counter_rvenv_int }
     \__rv_env_init_local_group:n { #1 }
+    \__rv_init_counter:nnn { #1 } { env } { local }
     \__rv_env_init_cs:n { #1 }
   }
-\cs_generate_variant:Nn \__rv_env_init:n { V }
 
+% #1 class
 \cs_new_protected:Nn \__rv_env_init_local_group:n
   {
-    \seq_map_inline:cn { g__rv_#1_prop_seq }
+    \seq_map_inline:cn { g__rv_#1_local_group_seq }
       {
-        \seq_map_inline:cn { g__rv_#1_local_group_seq }
+        \seq_map_inline:cn { g__rv_#1_prop_seq }
           {
             \seq_gclear_new:c
               {
-                g__rv_#1_local_group_####1_prop_##1_
-                \int_use:c { g__rv_#1_groupid_int }
+                g__rv_#1_local_group_##1_prop_####1_
+                \int_use:c { g__rv_#1_reserved_counter_rvenv_int }
                 _seq
               }
           }
@@ -222,91 +298,414 @@
 
 \cs_new_protected:Nn \__rv_env_init_cs:n
   {
-    \DeclareDocumentCommand { \rvgroup } { s o m +m }
+    \__rv_env_init_cs_save:n { #1 }
+    \__rv_init_cs_counter:nn { #1 } { env }
+    \__rv_init_cs_addto_group:n { #1 }
+  }
+
+\cs_new_protected:Nn \__rv_env_init_cs_save:n
+  {
+    \DeclareDocumentCommand { \rvsave } { s m m +m }
       {
         \IfBooleanTF { ##1 }
           {
-            \IfValueTF { ##2 }
-              {
-                \__rv_save_global_group_prop:nnnn
-                  { #1 } { ##2 } { ##3 } { ##4 }
-              }
-              {
-                \__rv_save_global_group_prop:nnnn
-                  { #1 } { star } { ##3 } { ##4 }
-              }
+            \__rv_save_global_group_prop:nnnn
+              { #1 } { ##2 } { ##3 } { ##4 }
           }
           {
-            \IfValueTF { ##2 }
+            \__rv_save_local_group_prop:nnnn
+              { #1 } { ##2 } { ##3 } { ##4 }
+          }
+      }
+    \DeclareDocumentCommand { \rvesave } { s m m +m }
+      {
+        \IfBooleanTF { ##1 }
+          {
+            \__rv_save_global_group_prop:nnnx
+              { #1 } { ##2 } { ##3 } { ##4 }
+          }
+          {
+            \__rv_save_local_group_prop:nnnx
+              { #1 } { ##2 } { ##3 } { ##4 }
+          }
+      }
+  }
+
+% #1 class #2 global group name #3 prop #4 content
+\cs_new_protected:Nn \__rv_save_global_group_prop:nnnn
+  {
+    \__rv_check_undefined:nnnn
+      { #1 } { global~group } { #2 } { \rvsave*~or~\rvesave* }
+    \__rv_check_undefined:nnnn
+      { #1 } { prop=property } { #3 } { \rvsave*~or~\rvesave* }
+    \seq_gput_right:cn { g__rv_#1_global_group_#2_prop_#3_seq } { #4 }
+  }
+\cs_generate_variant:Nn \__rv_save_global_group_prop:nnnn { nnnx }
+
+% #1 class #2 local group name #3 prop #4 content
+\cs_new_protected:Nn \__rv_save_local_group_prop:nnnn
+  {
+    \__rv_check_undefined:nnnn
+      { #1 } { local~group } { #2 } { \rvsave~or~\rvesave }
+    \__rv_check_undefined:nnnn
+      { #1 } { prop=property } { #3 } { \rvsave~or~\rvesave }
+    \seq_gput_right:cn
+      {
+        g__rv_#1_local_group_#2_prop_#3_
+        \int_use:c { g__rv_#1_reserved_counter_rvenv_int }
+        _seq
+      } { #4 }
+  }
+\cs_generate_variant:Nn \__rv_save_local_group_prop:nnnn { nnnx }
+
+% #1 class #2 env/show
+\cs_new_protected:Nn \__rv_init_cs_counter:nn
+  {
+    \clist_map_inline:nn { arabic, alph, Alph, roman, Roman }
+      {
+        \exp_args:Nc \DeclareExpandableDocumentCommand { rvc##1 } { s m }
+          {
+            \IfBooleanTF { ####1 }
+              { \__rv_use_counter:nnnnn { global } }
+              { \__rv_use_counter:nnnnn { local } }
+            { #1 } { #2 } { ####2 } { ##1 }
+          }
+      }
+    \DeclareDocumentCommand { \rvcstep } { s m }
+      {
+        \IfBooleanTF { ##1 }
+          { \__rv_step_counter:nnnn { global } }
+          { \__rv_step_counter:nnnn { local } }
+        { #1 } { #2 } { ##2 }
+      }
+    \DeclareExpandableDocumentCommand { \rvcvalue } { s m }
+      {
+        \IfBooleanTF { ##1 }
+          { \__rv_get_counter_value:nnnn { global } }
+          { \__rv_get_counter_value:nnnn { local } }
+        { #1 } { #2 } { ##2 }
+      }
+    % #1 counter #2 int expr
+    \DeclareDocumentCommand { \rvcset } { s m m }
+      {
+        \IfBooleanTF { ##1 }
+          { \__rv_set_counter:nnnnx { global } }
+          { \__rv_set_counter:nnnnx { local } }
+        { #1 } { #2 } { ##2 } { ##3 }
+      }
+  }
+
+% #1 global/local #2 class #3 env/show #4 counter #5 counter show type
+\cs_new:Nn \__rv_use_counter:nnnnn
+  {
+    \prop_if_in:NnTF \g__rv_reserved_counter_prop { #4 }
+      {
+        \str_if_eq:nnT { #3 } { env }
+          {
+            \__rv_check_counter_use:nn { #4 } { rvenv }
+          }
+        \__rv_check_show_counter_use:nn { #3 } { #4 }
+        \cs_if_exist_use:c { int_to_#5:n }
+          {
+            \int_use:c { g__rv_#2_reserved_counter_#4_int }
+          }
+      }
+      {
+        \__rv_check_couter_not_define:nnnn { #2 } { #1 } { #4 } { rvc#5 }
+        \cs_if_exist_use:c { int_to_#5:n }
+          {
+            \int_use:c { g__rv_#2_#3_#1_counter_#4_int }
+          }
+      }
+  }
+
+% #1 global/local #2 class #3 env/show #4 counter
+\cs_new_protected:Nn \__rv_step_counter:nnnn
+  {
+    \__rv_check_counter_not_allowed:nn { #3 } { rvcstep }
+    \seq_if_in:NnTF \g__rv_reserved_counter_seq { #4 }
+      { \__rv_msg_error:nn { counter-read-only } { #4 } }
+      {
+        \__rv_check_couter_not_define:nnnn { #2 } { #1 } { #4 } { rvcstep }
+      }
+    \int_gincr:c { g__rv_#2_#3_#1_counter_#4_int }
+  }
+
+% #1 global/local #2 class #3 env/show #4 counter
+\cs_new:Nn \__rv_get_counter_value:nnnn
+  {
+    \prop_if_in:NnTF \g__rv_reserved_counter_prop { #4 }
+      {
+        \str_if_eq:nnT { #3 } { env }
+          {
+            \__rv_check_counter_use:nn { #4 } { rvenv }
+          }
+        \__rv_check_show_counter_use:nn { #3 } { #4 }
+        \int_use:c { g__rv_#2_reserved_counter_#4_int }
+      }
+      {
+        \__rv_check_couter_not_define:nnnn { #2 } { #1 } { #4 } { rvcvalue }
+        \int_use:c { g__rv_#2_#3_#1_counter_#4_int }
+      }
+  }
+
+% #1 global/local #2 class #3 env/show #4 counter #5 value
+\cs_new_protected:Nn \__rv_set_counter:nnnnn
+  {
+    \__rv_check_counter_not_allowed:nn { #3 } { rvcset }
+    \seq_if_in:NnT \g__rv_reserved_counter_seq { #4 }
+      { \__rv_msg_error:nn { counter-read-only } { #4 } }
+      {
+        \__rv_check_couter_not_define:nnnn { #2 } { #1 } { #4 } { rvcset }
+      }
+    \int_gset:cn { g__rv_#2_#3_#1_counter_#4_int } { #5 }
+  }
+\cs_generate_variant:Nn \__rv_set_counter:nnnnn { nnnnx }
+
+% #1 class
+\cs_new_protected:Nn \__rv_init_cs_addto_group:n
+  {
+    \seq_map_inline:cn { g__rv_#1_local_group_seq }
+      {
+        \int_gzero_new:c { g__rv_#1_addto_local_group_##1_counter_int }
+      }
+    \NewDocumentCommand { \rvaddtogroup } { m }
+      { \__rv_addto_group:nn { #1 } { ##1 } }
+  }
+
+% #1 class #2 local group list
+\cs_new_protected:Nn \__rv_addto_group:nn
+  {
+    \clist_map_inline:nn { #2 }
+      {
+        \int_gincr:c
+          { g__rv_#1_addto_local_group_##1_counter_int }
+        \__rv_check_undefined:nnnn
+          { #1 } { local~group } { ##1 } { \rvaddtogroup }
+        \__rv_check_group_add_once:nn { #1 } { ##1 }
+        \seq_gput_right:cx { g__rv_#1_subgroup_##1_index_seq }
+          {
+            \int_use:c { g__rv_#1_reserved_counter_rvenv_int }
+          }
+      }
+  }
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% show
+
+\NewDocumentCommand { \rvshow } { s m m }
+  {
+    \IfBooleanTF { #1 }
+      { \__rv_show:nnn { global } }
+      { \__rv_show:nnn { local } }
+    { #2 } { #3 }
+  }
+
+% #1 global/local #2 class #3 group
+\cs_new_protected:Nn \__rv_show:nnn
+  {
+    \cs_if_exist_use:c { __rv_#2_show_cs_#1_#3 }
+  }
+
+\NewDocumentCommand { \rvsetshowstyle } { s }
+  {
+    \IfBooleanTF { #1 }
+      { \__rv_set_show_global_style:nnnnnn }
+      { \__rv_set_show_local_style:nnnnnnnn }
+  }
+
+% #1 class list #2 global group list #3 prop
+% #4 before group code #5 after group code
+% #6 group item code
+\cs_new_protected:Nn \__rv_set_show_global_style:nnnnnn
+  {
+    \__rv_check_class_not_set:
+    \clist_map_inline:nn { #1 }
+      {
+        \__rv_check_class_not_define:nn { ##1 } { error }
+        \__rv_check_undefined:nnnn
+          { ##1 } { prop=property } { #3 } { \setshowstyle* }
+        \clist_map_inline:nn { #2 }
+          {
+            \__rv_check_undefined:nnnn
+              { ##1 } { global~group } { ####1 } { \setshowstyle* }
+            \cs_gset_protected:cpn { __rv_##1_show_cs_global_####1 }
               {
-                \__rv_save_local_group_prop:nnnn
-                  { #1 } { ##2 } { ##3 } { ##4 }
-              }
-              {
-                \__rv_save_local_group_prop:nnnn
-                  { #1 } { group } { ##3 } { ##4 }
+                \__rv_show_global:nnnnnn
+                  { #1 } { #2 } { #3 } { #4 } { #5 } { #6 }
               }
           }
       }
   }
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% show
+% #1 class #2 global group #3 prop
+% #4 before group code #5 after group code
+% #6 group item code
+\cs_new_protected:Nn \__rv_show_global:nnnnnn
+  {
+    \int_zero_new:c { g__rv_#1_reserved_counter_rvitem_int }
+    \__rv_init_cs_counter:nn { #1 } { show }
+    % \__rv_show_init_cs_use:nnn { #1 } { #2 } { }
+    \__rv_show_global_init_cs_use:nn { #1 } { #2 }
+    #4
+    \seq_map_inline:cn { g__rv_#1_global_group_#2_prop_#3_seq }
+      {
+        \int_incr:c { g__rv_#1_reserved_counter_rvitem_int }
+        #6
+      }
+    #5
+  }
 
-\cs_new_protected:Nn \__rv_show:
+% #1 class #2 global group
+\cs_new_protected:Nn \__rv_show_global_init_cs_use:nn
+  {
+    \DeclareDocumentCommand { \rvuse } { o m }
+      {
+        \IfValueT { ##1 }
+          {
+            \__rv_msg_warning:n { show-global-ignore-optional }
+          }
+        \__rv_check_undefined:nnnn
+          { #1 } { prop=property } { ##2 } { \rvuse }
+        \__rv_check_invalid_index:nnnnnn { #1 } { global } { #2 } { ##2 }
+          { g__rv_#1_global_group_#2_prop_##2_seq }
+          { g__rv_#1_reserved_counter_rvitem_int }
+        \seq_item:cn { g__rv_#1_global_group_#2_prop_##2_seq }
+          { \int_use:c { g__rv_#1_reserved_counter_rvitem_int } }
+      }
+  }
+
+% #1 class list #2 local group list #3 prop
+% #4 before group code #5 after group code
+% #6 before subgroup code #7 after subgroup code
+% #8 group item code
+\cs_new_protected:Nn \__rv_set_show_local_style:nnnnnnnn
   {
     \__rv_check_class_not_set:
-    \seq_map_inline:Nn \g__rv_show_class_seq
-      { \__rv_show_class:n { ##1 } }
+    \clist_map_inline:nn { #1 }
+      {
+        \__rv_check_class_not_define:nn { ##1 } { error }
+        \__rv_check_undefined:nnnn
+          { ##1 } { prop=property } { #3 } { \setshowstyle }
+        \clist_map_inline:nn { #2 }
+          {
+            \__rv_check_undefined:nnnn
+              { ##1 } { local~group } { ####1 } { \setshowstyle }
+            \cs_gset_protected:cpn { __rv_##1_show_cs_local_####1 }
+              {
+                \__rv_show_local:nnnnnnnn
+                  { #1 } { #2 } { #3 } { #4 }
+                  { #5 } { #6 } { #7 } { #8 }
+              }
+          }
+      }
   }
 
-\cs_new_protected:Nn \__rv_show_class:n
+% #1 class #2 local group #3 prop
+% #4 before group code #5 after group code
+% #6 before subgroup code #7 after subgroup code
+% #8 group item code
+\cs_new_protected:Nn \__rv_show_local:nnnnnnnn
   {
+    \int_zero_new:c { g__rv_#1_reserved_counter_rvgroup_int }
+    \__rv_init_cs_counter:nn { #1 } { show }
+    #4
+    \seq_map_inline:cn { g__rv_#1_subgroup_#2_index_seq }
+      {
+        \int_gincr:c { g__rv_#1_reserved_counter_rvgroup_int }
+        % \__rv_show_init_cs_use:nnn { #1 } { #2 } { ##1 }
+        \__rv_show_local_init_cs_use:nnn { #1 } { #2 } { ##1 }
+        \__rv_show_local_sub:nnnnnnn { #1 } { #2 } { #3 }
+          { ##1 } { #6 } { #7 } { #8 }
+      }
+    #5
   }
 
+% #1 class #2 local group #3 prop #4 index
+% #5 before subgroup code #6 after subgroup code
+% #7 group item code
+\cs_new_protected:Nn \__rv_show_local_sub:nnnnnnn
+  {
+    \int_zero_new:c { g__rv_#1_reserved_counter_rvitem_int }
+    #5
+    \seq_map_inline:cn { g__rv_#1_local_group_#2_prop_#3_#4_seq }
+      {
+        \int_incr:c { g__rv_#1_reserved_counter_rvitem_int }
+        #7
+      }
+    #6
+  }
+
+% #1 class #2 local group #3 index
+\cs_new_protected:Nn \__rv_show_local_init_cs_use:nnn
+  {
+    \DeclareDocumentCommand { \rvuse } { o m }
+      {
+        \IfValueTF { ##1 }
+          {
+            \__rv_show_local_use_global:nnn { #1 } { ##1 } { ##2 }
+          }
+          {
+            \__rv_show_local_use_local:nnnn { #1 } { #2 } { ##2 } { #3 }
+          }
+      }
+  }
+
+% #1 class #2 global group #3 prop
+\cs_new_protected:Nn \__rv_show_local_use_global:nnn
+  {
+    \__rv_check_undefined:nnnn
+      { #1 } { prop=property } { #3 } { \rvuse }
+    \__rv_check_invalid_index:nnnnnn { #1 } { global } { #2 } { #3 }
+      { g__rv_#1_global_group_#2_prop_#3_seq }
+      { g__rv_#1_reserved_counter_rvgroup_int }
+    \seq_item:cn { g__rv_#1_global_group_#2_prop_#3_seq }
+      { \int_use:c { g__rv_#1_reserved_counter_rvgroup_int } }
+  }
+
+% #1 class #2 local group #3 prop #4 index
+\cs_new_protected:Nn \__rv_show_local_use_local:nnnn
+  {
+    \__rv_check_undefined:nnnn
+      { #1 } { prop=property } { #3 } { \rvuse }
+    \__rv_check_invalid_index:nnnnnn { #1 } { local } { #2 } { #3 }
+      { g__rv_#1_local_group_#2_prop_#3_#4_seq }
+      { g__rv_#1_reserved_counter_rvitem_int }
+    \seq_item:cn { g__rv_#1_local_group_#2_prop_#3_#4_seq }
+      { \int_use:c { g__rv_#1_reserved_counter_rvitem_int } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% review point
+
+% #1 name #2 list
+\NewDocumentCommand { \rvnewreviewpoint } { m m }
+  {
+    \seq_gset_from_clist:cn { g__rv_review_point_#1_seq } {  #2 }
+  }
+
+% #1 name #2 date A #3 date B
+% \NewDocumentCommand { \rvifreviewTF } { m m m m m }
+  % {
+    % \__rv_if_review:nnnTF { #1 } { #2 } { #3 }
+  % }
+
+% #1 name #2 date A #3 date B
+\prg_new_conditional:Nnn \__rv_if_review:nnn { T, F, TF }
+  {
+    \rv_utils_if_review:cnnTF { g__rv_review_point_#1_seq } { #2 } { #3 }
+      { \prg_return_true: }
+      { \prg_return_false: }
+  }
+\cs_set_eq:NN \rvifreviewTF \__rv_if_review:nnnTF
+\cs_set_eq:NN \rvifreviewT \__rv_if_review:nnnT
+\cs_set_eq:NN \rvifreviewF \__rv_if_review:nnnF
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% package msg
 
-\cs_new_protected:Nn \__rv_msg_new:nn
-  {
-    \msg_new:nnn { review } { #1 } { #2 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_warning:nn
-  {
-    \msg_warning:nnn { review } { #1 } { #2 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_error:n
-  {
-    \msg_error:nn { review } { #1 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_error:nn
-  {
-    \msg_error:nnn { review } { #1 } { #2 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_error:nnn
-  {
-    \msg_error:nnnn { review } { #1 } { #2 } { #3 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_error:nnnn
-  {
-    \msg_error:nnnnn { review } { #1 } { #2 } { #3 } { #4 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_critical:n
-  {
-    \msg_critical:nn { review } { #1 }
-  }
-
-\cs_new_protected:Nn \__rv_msg_critical:nn
-  {
-    \msg_critical:nnn { review } { #1 } { #2 }
-  }
+\rv_utils_set_msg_cs:n { review=rv }
 
 \__rv_msg_new:nn { class-not-set }
   {
@@ -314,30 +713,97 @@
     command~ \rvsetclass~ first.
   }
 
+% #1 class #2 type #3 name #4 command
+\__rv_msg_new:nn { rv-not-define }
+  {
+    #4~ uses~ an~ undefined~ #2~ '#3'~ of~ class~ '#1'~ \msg_line_context:.
+  }
+
 \__rv_msg_new:nn { class-not-define }
   {
-    Review~ class~ '#1'~ not~ defined!
+    review~ class~ '#1'~ not~ defined!
   }
 
-\__rv_msg_new:nn { multi-class-options }
+\__rv_msg_new:nn { reserved-counter }
   {
-    Please~ do~ not~ set~ review~ classes~ multiple~ times!~ Check~ if~
-    there~ are~ duplicated~ '\c_backslash_str rvsetclass'~ commands.
+    counter~ name~ '#1'~ is~ reserved~ for~ package.
   }
 
-\__rv_msg_new:nn { duplicated-prop }
+\__rv_msg_new:nn { counter-read-only }
   {
-    Property~ '#2'~ of~ review~ class~ '#1'~ has~ been~ defined.
+    counter~ '#1'~ is~ read-only.
   }
 
-\__rv_msg_new:nn { prop-not-define }
+\__rv_msg_new:nn { counter-use-only }
   {
-    Property~ '#2'~ of~ review~ class~ '#1'~ is~ not~ defined.
+    counter~ '#1'~ is~ used~ only~ in~ #2.
   }
 
-\__rv_msg_new:nn { group-not-define }
+\__rv_msg_new:nn { addto-multi-times }
   {
-    #3~ group~ '#2'~ of~ review~ class~ '#1'~ is~ not~ defined.
+    You~ have~ used~ \c_backslash_str rvaddtogroup~ to~ append~ subgroup~ to~
+    the~ local~ group~ '#2'~ more~ than~ once~ in~ the~ group~ environment~ of~
+    class~ '#1'.~ This~ will~ cause~ the~ same~ subgroup~ to~ be~ printed~
+    multiple~ times.
+  }
+
+\__rv_msg_new:nn { step-set-not-allowed }
+  {
+    \c_backslash_str #1~ is~ not~ allowed~ in~ \c_backslash_str rvsetshowstyle.
+  }
+
+\__rv_msg_new:nn { show-counter-use-only }
+  {
+    Only~ counters~ 'rvitem'~ and~ 'rvgroup'~ are~ available~ in~ \c_backslash_str
+    rvsetshowstle.
+  }
+
+\__rv_msg_new:nn { show-global-ignore-optional }
+  {
+    optional~ argument~ of~ \c_backslash_str rvuse~ in~ \c_backslash_str
+    rvsetshowstyle*~ is~ ignored.
+  }
+
+% #1 class #2 global/local #3 group #4 prop
+\__rv_msg_new:nn { item-index-out-of-range }
+  {
+    index~ out~ of~ range~ when~ requiring~ the~ item~ of~ property~ '#4'~ of~
+    #2~ group~ '#3'~ in~ class~ '#1',~ nothing~ returned.
+  }
+
+\__rv_msg_new:nn { global-item-index-out-of-range-detail }
+  {
+    property~ '#2'~ of~ global~ group~ '#1'~ has~ #3~ items~ but~ you~ are~
+    requiring~ the~ item~ of~ index~ #4.
+    \\ \\
+    Please~ make~ sure~ there~ are~ an~ equal~ number~ of~ items~ of~
+    properties~ in~ global~ group~ '#1'.
+  }
+
+\__rv_msg_new:nn { local-item-index-out-of-range-detail }
+  {
+    subgroup of property~ '#2'~ of~ local~ group~ '#1'~ has~ #3~ items~ but~ you~ are~
+    requiring~ the~ item~ of~ index~ #4.
+    \\ \\
+    Please~ make~ sure~ there~ are~ an~ equal~ number~ of~ items~ of~
+    properties~ in~ global~ group~ '#1'.
+  }
+
+% #1 class #2 seq type=full type name #3 name #4 command
+\cs_new_protected:Nn \__rv_check_undefined:nnnn
+  {
+    \str_if_in:nnTF { #2 } { = }
+      {\rv_utils_get_kv:nNN { #2 } }
+      { \rv_utils_get_kv:nNN { #2=#2 } }
+    \l_tmpa_tl \l_tmpb_tl
+    \regex_replace_all:nnN { \s } { _ } \l_tmpa_tl
+    \seq_if_in:cnF { g__rv_#1_\l_tmpa_tl _seq } { #3 }
+      {
+        \rv_utils_regex_replace_all:nnnN
+          { . } { \c{string} \0 } { #4 } \l_tmpc_tl
+        \__rv_msg_error:nxxxx { rv-not-define }
+          { #1 } { \l_tmpb_tl } { #3 } { \l_tmpc_tl }
+      }
   }
 
 \cs_new_protected:Nn \__rv_check_class_not_set:
@@ -361,21 +827,117 @@
       }
   }
 
-% #1 class #2 prop
-\cs_new_protected:Nn \__rv_check_prop_not_define:nn
+% #1 counter
+\cs_new_protected:Nn \__rv_check_reserved_counter:n
   {
-    \seq_if_in:cnF { g__rv_#1_prop_seq } { #2 }
+    \prop_if_in:NnT \g__rv_reserved_counter_prop { #1 }
       {
-        \__rv_msg_error:nnn { prop-not-define } { #1 } { #2 }
+        \__rv_msg_error:nn { reserved-counter } { #1 }
       }
   }
 
-% #1 class #2 group #3 group type
-\cs_new_protected:Nn \__rv_check_group_not_define:nnn
+% #1 reserved counter #2 expected counter
+\cs_new_protected:Nn \__rv_check_counter_use:nn
   {
-    \seq_if_in:cnF { g__rv_#1_#3_group_seq } { #2 }
+    \str_if_eq:nnF { #1 } { #2 }
       {
-        \__rv_msg_error:nnnn { group-not-define } { #1 } { #2 } { #3 }
+        \__rv_check_counter_use_only:n { #1 }
       }
   }
+
+% #1 reserved counter
+\cs_new_protected:Nn \__rv_check_counter_use_only:n
+  {
+    \str_case:nn { #1 }
+      {
+        { rvenv }
+        {
+          \__rv_msg_error:nnn { counter-use-only }
+            { #1 } { group~environment }
+        }
+        { rvgroup }
+        {
+          \__rv_msg_error:nxx { counter-use-only }
+            { #1 } { \c_backslash_str rvsetshowstyle }
+        }
+        { rvitem }
+        {
+          \__rv_msg_error:nxx { counter-use-only } { #1 }
+            {
+              \c_backslash_str rvsetshowstyle~ or~
+              \c_backslash_str rvsetshowstyle*
+            }
+        }
+      }
+  }
+
+% #1 class #2 global/local #3 counter #4 command
+\cs_new_protected:Nn \__rv_check_couter_not_define:nnnn
+  {
+    \prop_if_in:cnF { g__rv_#1_#2_counter_prop } { #3 }
+      {
+        \str_if_eq:nnTF { #2 } { global }
+          {
+            \__rv_msg_error:nxxxx { rv-not-define } { #1 }
+              { #2~counter } { #3 } { \c_backslash_str#4* }
+          }
+          {
+            \__rv_msg_error:nxxxx { rv-not-define } { #1 }
+              { #2~counter } { #3 } { \c_backslash_str#4 }
+          }
+      }
+  }
+
+% #1 class #2 local group
+\cs_new_protected:Nn \__rv_check_group_add_once:nn
+  {
+    \int_compare:nT
+      {
+        \int_use:c
+          { g__rv_#1_addto_local_group_#2_counter_int }
+        > 1
+      }
+      {
+        \__rv_msg_warning:nnn { addto-multi-times } { #1 } { #2 }
+      }
+  }
+
+% #1 show #2 command
+\cs_new_protected:Nn \__rv_check_counter_not_allowed:nn
+  {
+    \str_if_eq:nnT { #1 } { show }
+      {
+        \__rv_msg_fatal:nn { step-set-not-allowed } { #2 }
+      }
+  }
+
+% #1 show #2 counter
+\cs_new_protected:Nn \__rv_check_show_counter_use:nn
+  {
+    \bool_if:nT
+      {
+        \str_if_eq_p:nn { #1 } { show } &&
+        ! \str_if_eq_p:nn { #2 } { rvitem } &&
+        ! \str_if_eq_p:nn { #2 } { rvgroup }
+      }
+      {
+        \__rv_msg_fatal:n { show-counter-use-only }
+      }
+  }
+
+% #1 class #2 global/local #3 group
+%#4 prop #5 seq name #6 index name
+\cs_new_protected:Nn \__rv_check_invalid_index:nnnnnn
+  {
+    \int_compare:nT
+      { \int_use:c { #6 } > \seq_count:c { #5 } }
+      {
+        \__rv_msg_warning:nnnnn { item-index-out-of-range }
+          { #1 } { #2 } { #3 } { #4 }
+
+        \__rv_msg_warning:nxxxx { #2-item-index-out-of-range-detail }
+          { #3 } { #4 } { \seq_count:c { #5 } } { \int_use:c { #6 } }
+      }
+  }
+
 \file_input_stop:

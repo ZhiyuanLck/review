@@ -1,36 +1,80 @@
 \documentclass{ctexart}
 \usepackage{review}
-\rvsetclass{math, en}
-\ExplSyntaxOn
-% \__rv_show:
-\ExplSyntaxOff
-\rvsetup{
-}
+\usepackage{tikz}
+\usepackage{multicol}
+\usepackage{tcolorbox}
+
+\rvsetclass{math}
 \rvsetupall{
-  show={a,bc},
-  prop={a,b,c,d},
-  local-group={test},
-  global-group={abc}
+  global-group=star,
+  group={test},
+  prop={date, content, count},
 }
+\rvnewreviewpoint{default}{2, 5}
+\def\mydate{2020-10-01}
+
+\DeclarervGroupEnvironment { math } { m +b }
+  {
+    \rvifreviewT{default}{\mydate}{#1}
+      {
+        \rvcstep*{test}
+        \rvesave*{test}{count}{\rvcAlph*{test}}
+        \rvsave*{test}{date}{#1}
+        \rvaddtogroup{test}
+      }
+    \NewDocumentCommand { \mysave } { s m }
+      {
+        \IfBooleanT { ##1 }
+          {
+            \rvesave*{star}{count}{\rvcAlph*{test}}
+            \rvsave*{star}{content}{##2}
+          }
+        \rvcstep{test}
+        \rvesave{test}{count}{\rvcAlph{test}}
+        \rvsave{test}{content}{##2}
+      }
+    #2
+  } { }
+
+\rvsetshowstyle*{math}{star}{content}
+  {\begin{tcolorbox}\begin{multicols}{2}}
+  {\end{multicols}\end{tcolorbox}}
+  {
+    saved counter:~\rvuse{count}\par
+    rvitem:~\rvcRoman{rvitem}\par
+    content:~\rvuse{content}\par
+    \vspace{1em}
+  }
+
+\rvsetshowstyle{math}{test}{content}
+  {\begin{tcolorbox}\begin{multicols}{2}}
+  {\end{multicols}\end{tcolorbox}}
+  {
+    \begin{tcolorbox}[colback=yellow!20, title={\rvuse[test]{date}}]
+  }
+  {\end{tcolorbox}}
+  {
+    saved counter:~\rvuse{count}\par
+    rvitem:~\rvcRoman{rvitem}\par
+    content:~\rvuse{content}\par
+    \vspace{1em}
+  }
 
 \begin{document}
-\typeout{xxx}
-\ExplSyntaxOn
-% \seq_use:Nn \g__rv_math_group_prop_seq {*}
-% \seq_use:Nn \g__rv_math_item_prop_seq {*}
-\NewrvGroupEnvironment { math,en=en } { m +b }
-  { #1 #2 } { }
-\DeclarervGroupEnvironment { math,en=en } { m +b }
-  { #1*#2 } { }
-% \NewrvGroupEnvironment { en=en } { m +b }
-\ExplSyntaxOff
-\begin{rvmath}{+++}
-  \rvgroup*[abcd]{a}{test}
+\begin{rvmath}{2020-10-03}
+  \mysave{test 1}
+  \mysave*{test 2}
 \end{rvmath}
-\begin{en}{+++}
-  \rvgroup[test]{a}{test}
-  dkf
-\end{en}
 
-abc
+\begin{rvmath}{2020-10-04}
+  \mysave{test 3}
+  \mysave*{test 4}
+\end{rvmath}
+
+\begin{rvmath}{2020-10-06}
+  \mysave{test 5}
+  \mysave*{test 6}
+\end{rvmath}
+\rvshow*{math}{star}
+\rvshow{math}{test}
 \end{document}
