@@ -1,0 +1,174 @@
+%%
+%% This is file `showdata.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% showdata.dtx  (with options: `package')
+%% 
+%% Copyright (C) 2020 by Li Changkai
+%% -----------------------------------
+%% 
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in:
+%% 
+%% http://www.latex-project.org/lppl.txt
+%% 
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%% 
+\def\myfileversion{1.0}
+\def\myfiledate{2020/10/12}
+\RequirePackage{expl3, xparse, showdata-utils}
+\ProvidesExplPackage
+  { showdata }
+  { \myfiledate }
+  { \myfileversion }
+  { Store and show your datas }
+\seq_new:N \g__showdata_domain_seq
+\seq_set_from_clist:Nn \g__showdata_reserved_counter_seq
+  { sdenv, sdgroup, sditem }
+\prop_gset_from_keyval:Nn \g__showdata_reserved_counter_prop
+  { sdenv=, sdgroup=, sditem= }
+\NewDocumentCommand { \sdsetdomain } { m }
+  {
+    \__showdata_set_class:n { #1 }
+  }
+\cs_new_protected:Nn \__showdata_set_domain:n
+  {
+    \seq_set_from_clist:Nn \g__showdata_domain_seq { #1 }
+    \clist_map_inline:nn { #1 }
+      { \__showdata_set_single_domain:n { ##1 } }
+  }
+\cs_new_protected:Nn \__showdata_set_single_domain:n
+  {
+    \__showdata_init_single_domain_attr:n { #1 }
+    \__showdata_def_single_domain_opt:n { #1 }
+  }
+\cs_new_protected:Nn \__showdata_init_single_domain_attr:n
+  {
+    \seq_gset_from_clist:cn { g__showdata_#1_global_group_seq } { star, date, all }
+    \seq_gset_from_clist:cn { g__showdata_#1_local_group_seq } { date, all }
+    \seq_gclear_new:c { g__showdata_#1_global_counter_seq }
+    \seq_gclear_new:c { g__showdata_#1_local_counter_seq }
+    \prop_gclear_new:c { g__showdata_#1_global_counter_prop }
+    \prop_gclear_new:c { g__showdata_#1_local_counter_prop }
+    \seq_gclear_new:c { g__showdata_#1_prop_seq }
+  }
+\cs_new_protected:Nn \__showdata_def_single_domain_opt:n
+  {
+    \keys_define:nn { showdata / #1 }
+      {
+        prop .code:n =
+          {
+            \sd_seq_gappend_clist:cn
+              { g__showdata_#1_prop_seq } { ##1 }
+          },
+        local-group .code:n =
+          {
+            \sd_seq_gappend_clist:cn
+              { g__showdata_#1_local_group_seq } { ##1 }
+          },
+        global-group .code:n =
+          {
+            \sd_seq_gappend_clist:cn
+              { g__showdata_#1_global_group_seq } { ##1 }
+          },
+        group .code:n =
+          {
+            \sd_seq_gappend_clist:cn
+              { g__showdata_#1_global_group_seq } { ##1 }
+            \sd_seq_gappend_clist:cn
+              { g__showdata_#1_local_group_seq } { ##1 }
+          },
+        local-counter .code:n =
+          {
+            \__showdata_counter_seq_append:nnn { #1 } { local } { ##1 }
+          },
+        global-counter .code:n =
+          {
+            \__showdata_counter_seq_append:nnn { #1 } { global } { ##1 }
+          },
+        counter .code:n =
+          {
+            \__showdata_counter_seq_append:nnn { #1 } { local } { ##1 }
+            \__showdata_counter_seq_append:nnn { #1 } { global } { ##1 }
+          },
+      }
+  }
+\cs_new_protected:Nn \__showdata_counter_seq_append:nnn
+  {
+    \clist_map_inline:nn { #3 }
+      {
+        \seq_gput_right:cn { g__showdata_#1_#2_counter_seq } { ##1 }
+        \prop_gput:cnn { g__showdata_#1_#2_counter_prop } { ##1 } { }
+      }
+  }
+\NewDocumentCommand { \sdsetup } { m }
+  {
+    \__showdata_check_domain_not_set:
+    \keys_set:nn { showdata } { #1 }
+  }
+\NewDocumentCommand { \sdsetupsub } { m m }
+  {
+    \__showdata_check_domain_not_set:
+    \clist_map_inline:nn { #1 }
+      { \__showdata_setup_single:nn { ##1 } { #2 } }
+  }
+\NewDocumentCommand { \sdsetupall } { m }
+  {
+    \__showdata_check_domain_not_set:
+    \seq_map_inline:Nn \g__showdata_domain_seq
+      { \__showdata_setup_single:nn { ##1 } { #1 } }
+  }
+\cs_new_protected:Nn \__showdata_setup_single:nn
+  {
+    \__showdata_check_domain_not_define:nn { #1 } { critical }
+    \keys_set:nn { review / #1 } { #2 }
+  }
+\clist_map_inline:nn { New, Renew, Declare, Provide }
+  {
+    \cs_new_protected:cpn { #1sdBatchEnvironment } ##1##2##3##4
+      {
+        \__showdata_new_batch_env:nnnnn { #1 } { ##1 } { ##2 } { ##3} { ##4 }
+      }
+  }
+\cs_new_protected:Nn \__showdata_new_group_env:nnnnn
+  {
+    \__showdata_check_domain_not_set:
+    \tl_set:Nn \l__showdata_env_tmpa_tl { #4 }
+    \tl_set:Nn \l__showdata_env_tmpb_tl { #5 }
+    \clist_map_inline:nn { #2 }
+      {
+        \__showdata_parse_single_batch_env:nnnVV { #1 } { ##1 } { #3 }
+        \l__showdata_env_tmpa_tl
+        \l__showdata_env_tmpb_tl
+      }
+  }
+\cs_new_protected:Nn \__showdata_parse_single_batch_env:nnnnn
+  {
+    \str_if_in:nnTF { #2 } { = }
+      { \sdutils_get_kv:nNN { #2 } }
+      { \sdutils_get_kv:nNN { #2=sd#2 } }
+    \l__showdata_domain_tl \l__showdata_env_tl
+    \__showdata_init_before_env:V \l__showdata_domain_tl
+    \__showdata_set_single_batch_env:nVVnnn { #1 }
+      \l__showdata_domain_tl \l__showdata_env_tl
+      { #3 } { #4 } { #5 }
+  }
+\cs_generate_variant:Nn \__showdata_parse_single_batch_env:nnnnn { nnnVV }
+\cs_new_protected:Nn \__showdata_init_before_env:n
+  {
+    \__showdata_check_domain_not_define:nn { #1 } { critical }
+    \__showdata_init_global_group:n { #1 }
+    \__showdata_add_default_counter:n { #1 }
+    \__showdata_init_counter:nnn { #1 } { env } { global }
+    \int_gzero_new:c { g__showdata_#1_reserved_counter_sdenv_int }
+    \__showdata_init_index_seq:n { #1 }
+  }
+\cs_generate_variant:Nn \__showdata_init_before_env:n { V }
+\endinput
+%%
+%% End of file `showdata.sty'.

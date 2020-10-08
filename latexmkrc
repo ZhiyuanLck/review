@@ -1,1 +1,1 @@
-$makeindex = 'makeindex %O -s gind.ist %B.idx';
+$makeindex = 'makeindex %O -s l3doc.ist %B.idx';
